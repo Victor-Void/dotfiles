@@ -7,6 +7,7 @@ DEST="$HOME/.config"
 
 LINK_MODE=false
 SKIP_DEPS=false
+ASSUME_YES=false
 
 RED=$'\033[0;31m'
 GREEN=$'\033[0;32m'
@@ -24,7 +25,8 @@ Options:
   --link       Symlink quickshell/ (live-edit the shell config from the repo).
                hypr/ and illogical-impulse/ are still materialized so paths
                can be resolved.
-  --no-deps    Skip dependency checks/installation
+  --no-deps    Skip dependency installation
+  -y, --yes    Assume yes to package prompts (no confirmation)
   -h, --help   Show this help
 EOF
 }
@@ -33,41 +35,66 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --link)    LINK_MODE=true; shift ;;
         --no-deps) SKIP_DEPS=true; shift ;;
+        -y|--yes)  ASSUME_YES=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) err "Unknown option: $1"; usage; exit 1 ;;
     esac
 done
 
 # ---------------------------------------------------------------- deps ----
-if [[ "$SKIP_DEPS" == false ]]; then
-    info "Checking dependencies..."
-    MISSING=""
-    for bin in hyprland qs; do
-        command -v "$bin" >/dev/null 2>&1 || MISSING="$MISSING $bin"
-    done
+# Packages needed by the shell + hyprland config.
+ARCH_ESSENTIAL="hyprland hypridle hyprlock quickshell kitty fuzzel grim slurp hyprpicker wl-clipboard cliphist satty swappy ffmpeg wireplumber brightnessctl playerctl libpulse ydotool wtype mako imagemagick matugen gnome-keyring ttf-jetbrains-mono-nerd noto-fonts ttf-material-symbols-variable"
+ARCH_OPTIONAL="mpvpaper cava easyeffects ttf-google-sans-hinted"
+# quickshell itself is not in the Arch repos; installed from the AUR below.
 
-    if [[ -n "$MISSING" ]]; then
-        warn "Missing binaries:$MISSING"
-        if command -v pacman >/dev/null 2>&1; then
-            warn "Arch: quickshell is in the AUR (e.g. 'yay -S quickshell')."
-            warn "Install quickshell first, then re-run ./install.sh --no-deps to continue."
-        else
-            warn "Quickshell must be installed manually on your distribution."
-            warn "See https://quickshell.outfoxxed.me/ for build/install instructions."
-        fi
-        if [[ "$MISSING" == *hyprland* ]]; then
-            if command -v pacman >/dev/null 2>&1; then
-                sudo pacman -S --needed hyprland
-            elif command -v dnf >/dev/null 2>&1; then
-                sudo dnf install -y hyprland
-            elif command -v apt >/dev/null 2>&1; then
-                sudo apt install -y hyprland
-            fi
-        fi
-        info "Continuing with config install; re-run after installing Quickshell if needed."
+install_arch() {
+    local pkgs="quickshell $ARCH_ESSENTIAL $ARCH_OPTIONAL"
+    if [[ "$ASSUME_YES" == true ]]; then
+        local yes="--noconfirm"
     else
-        info "Hyprland + Quickshell found."
+        info "About to install:"
+        echo "  $pkgs"
+        read -r -p "Proceed? [y/N] " ans || true
+        [[ "$ans" =~ ^[yY]$ ]] || { warn "Dependency install skipped."; return 0; }
     fi
+
+    local helper=""
+    if command -v paru >/dev/null 2>&1; then helper=paru
+    elif command -v yay  >/dev/null 2>&1; then helper=yay
+    fi
+
+    if [[ -z "$helper" ]]; then
+        info "No AUR helper found; installing paru..."
+        sudo pacman -S --needed --noconfirm git base-devel
+        local tmp
+        tmp="$(mktemp -d)"
+        git clone https://aur.archlinux.org/paru.git "$tmp/paru"
+        (cd "$tmp/paru" && makepkg -si --noconfirm)
+        helper=paru
+    fi
+
+    info "Installing packages with $helper (repo + AUR)..."
+    "$helper" -S --needed $yes $pkgs
+}
+
+install_deps() {
+    info "Checking dependencies..."
+    if command -v pacman >/dev/null 2>&1; then
+        install_arch
+    else
+        warn "Auto-install is currently supported for Arch-based systems."
+        warn "Recommended packages:"
+        echo "  hyprland hypridle hyprlock quickshell kitty fuzzel grim slurp"
+        echo "  hyprpicker wl-clipboard cliphist satty swappy ffmpeg wireplumber"
+        echo "  brightnessctl playerctl ydotool wtype mako imagemagick matugen"
+        echo "  mpvpaper cava fonts (Material Symbols, a Nerd Font)"
+        warn "Quickshell is not packaged on most non-Arch distros; build it from"
+        warn "source (see https://quickshell.outfoxxed.me/). Continuing anyway."
+    fi
+}
+
+if [[ "$SKIP_DEPS" == false ]]; then
+    install_deps
 fi
 
 # ---------------------------------------------------------- materialize ----
@@ -133,6 +160,10 @@ ${GREEN}Done!${NC} A few notes:
        $DEST/hypr/custom/   (user overrides)
      The main config lives in $DEST/hypr/hyprland/.
 
-  4. Re-login after installing to apply env vars and execs.
+  4. Optional: image-processing scripts use python deps
+     (pip install --user materialyoucolor opencv-python) and video wallpapers
+     need mpvpaper + ffmpeg.
+
+  5. Re-login after installing to apply env vars and execs.
 
 EOF

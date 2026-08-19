@@ -40,7 +40,9 @@ cd dotfiles
 
 The script:
 
-1. Checks for `hyprland` and `qs` (Quickshell) and warns if missing.
+1. Installs dependencies (Arch): Hyprland, Quickshell, Qt deps, capture/OS
+   tools, fonts — using `yay`/`paru` if present (installs `paru` otherwise).
+   Non-Arch distros get the package list printed instead.
 2. Copies the configs into `~/.config` (hypr, quickshell/ii, illogical-impulse).
 3. Resolves `$HOME` placeholders so paths work on your machine.
 4. Prints post-install notes (wallpaper path, launching `qs -c ii`).
