@@ -168,6 +168,50 @@ spacing: 0
                     Layout.fillWidth: true
                 }
 
+                MouseArea {
+                    id: deepseekIconButton
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 6
+                    visible: !PeakHours.deepseekPeak
+                    hoverEnabled: true
+
+                    CustomIcon {
+                        anchors.fill: parent
+                        source: "deepseek-symbolic"
+                        colorize: true
+                        color: Appearance.colors.colOnLayer1
+                    }
+
+                    AiPricingPopup {
+                        provider: "deepseek"
+                        hoverTarget: deepseekIconButton
+                    }
+                }
+
+                MouseArea {
+                    id: anthropicIconButton
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 16
+                    Layout.preferredHeight: 16
+                    Layout.leftMargin: 6
+                    Layout.rightMargin: 8
+                    visible: !PeakHours.anthropicPeak
+                    hoverEnabled: true
+
+                    CustomIcon {
+                        anchors.fill: parent
+                        source: "anthropic-symbolic"
+                    }
+
+                    AiPricingPopup {
+                        provider: "anthropic"
+                        hoverTarget: anthropicIconButton
+                    }
+                }
+
                 UtilButtons {
                     visible: (Config.options.bar.verbose && root.useShortenedForm === 0)
                     Layout.alignment: Qt.AlignVCenter

@@ -15,7 +15,41 @@ Singleton {
     property string deepseekStatus: ""
     property string anthropicStatus: ""
 
-    readonly property string soundFile: "$HOME/Downloads/ghost_of_tsushima.mp3"
+    readonly property string soundFile: Quickshell.shellPath("assets/sounds/ghost_of_tsushima.mp3")
+
+    // Model prices in USD per 1M tokens, as rows of [column, ...] cells.
+    readonly property var deepseekPriceRows: [
+        { header: false, cells: ["", "off-peak", "peak"] },
+        { header: true, cells: ["V4.1 Flash"] },
+        { header: false, cells: ["cache hit", "0.003", "0.006"] },
+        { header: false, cells: ["cache miss", "0.150", "0.300"] },
+        { header: false, cells: ["output", "0.600", "1.200"] },
+        { header: true, cells: ["V4 Pro"] },
+        { header: false, cells: ["cache hit", "0.022", "0.044"] },
+        { header: false, cells: ["cache miss", "0.660", "1.320"] },
+        { header: false, cells: ["output", "1.980", "3.960"] },
+    ]
+    readonly property var anthropicPriceRows: [
+        { header: false, cells: ["", "input", "output", "cache read"] },
+        { header: false, cells: ["Opus 5", "5.00", "25.00", "0.50"] },
+        { header: false, cells: ["Sonnet 5", "2.00", "10.00", "0.20"] },
+        { header: false, cells: ["Haiku 4.5", "1.00", "5.00", "0.10"] },
+    ]
+
+    function buildPriceCells(rows) {
+        const out = [];
+        for (let r = 0; r < rows.length; ++r) {
+            const row = rows[r];
+            for (let c = 0; c < row.cells.length; ++c) {
+                if (row.cells[c] === "") continue;
+                out.push({ text: row.cells[c], row: r, col: c, header: row.header });
+            }
+        }
+        return out;
+    }
+
+    readonly property var deepseekPriceCells: root.buildPriceCells(root.deepseekPriceRows)
+    readonly property var anthropicPriceCells: root.buildPriceCells(root.anthropicPriceRows)
 
     function pad2(n) {
         return n < 10 ? "0" + n : "" + n;
@@ -52,8 +86,10 @@ Singleton {
         return root.pad2(Math.floor(mins / 60)) + ":" + root.pad2(Math.round(mins % 60));
     }
 
-    // DeepSeek peak: 01:00-04:00 & 06:00-10:00 UTC (off-peak = half price)
+    // DeepSeek peak: 01:00-04:00 & 06:00-10:00 UTC, Monday-Friday (off-peak = half price).
     function deepseekPeakAt(date) {
+        const dow = date.getUTCDay();
+        if (dow === 0 || dow === 6) return false;
         const h = date.getUTCHours();
         return (h >= 1 && h < 4) || (h >= 6 && h < 10);
     }
@@ -77,14 +113,14 @@ Singleton {
     }
 
     function nextDeepseekTransition(date) {
-        const mins = date.getUTCHours() * 60 + date.getUTCMinutes();
-        const boundaries = [60, 240, 360, 600];
-        for (let i = 0; i < boundaries.length; ++i) {
-            if (boundaries[i] > mins) {
-                return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, boundaries[i]));
-            }
+        const hourMs = 3600000;
+        const current = root.deepseekPeakAt(date);
+        const start = (Math.floor(date.getTime() / hourMs) + 1) * hourMs;
+        const limit = start + 4 * 24 * hourMs;
+        for (let t = start; t < limit; t += hourMs) {
+            if (root.deepseekPeakAt(new Date(t)) !== current) return new Date(t);
         }
-        return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 1, 0));
+        return new Date(limit);
     }
 
     function nextAnthropicTransition(date) {
@@ -140,7 +176,7 @@ Singleton {
         const anStart = root.formatMinutes(root.ptHourToIstMinutes(5));
         const anEnd = root.formatMinutes(root.ptHourToIstMinutes(11));
 
-        root.deepseekLine = "Peak " + dsW1 + "-" + dsW1e + " & " + dsW2 + "-" + dsW2e + " IST";
+        root.deepseekLine = "Peak " + dsW1 + "-" + dsW1e + " & " + dsW2 + "-" + dsW2e + " IST weekdays";
         root.anthropicLine = "Peak " + anStart + "-" + anEnd + " IST weekdays";
         root.deepseekStatus = root.deepseekPeak ? "Peak" : "Off Peak";
         root.anthropicStatus = root.anthropicPeak ? "Peak" : "Off Peak";
@@ -175,7 +211,7 @@ Singleton {
 
     function notify(summary, body) {
         Quickshell.execDetached(["notify-send", summary, body, "-a", "Peak Hours"]);
-        Quickshell.execDetached(["bash", "-c", `ffplay -nodisp -autoexit -volume 80 "$HOME/Downloads/ghost_of_tsushima.mp3"`]);
+        Quickshell.execDetached(["ffplay", "-nodisp", "-autoexit", "-volume", "80", root.soundFile]);
     }
 
     readonly property Timer transitionTimer: Timer {
