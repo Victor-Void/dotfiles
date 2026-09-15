@@ -1,14 +1,22 @@
 pragma Singleton
 
+import qs.modules.common
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 Singleton {
     id: root
 
     property bool deepseekPeak: false
     property bool anthropicPeak: false
-    property bool started: false
+
+    // Last state this service observed, persisted to disk so a config reload (or
+    // the shell being down across a transition) neither misses nor repeats an alert.
+    property var lastState: null
+    property bool stateLoaded: false
+    readonly property string statePath: `${Directories.state}/user/peak_hours.json`
+    readonly property string pricesPath: `${Directories.state}/user/peak_hours_prices.json`
 
     property string deepseekLine: ""
     property string anthropicLine: ""
@@ -18,7 +26,11 @@ Singleton {
     readonly property string soundFile: Quickshell.shellPath("assets/sounds/ghost_of_tsushima.mp3")
 
     // Model prices in USD per 1M tokens, as rows of [column, ...] cells.
-    readonly property var deepseekPriceRows: [
+    // Refreshed from the vendors' docs by scripts/peak-hours/update-prices.py;
+    // these built-in rows are the fallback when no parsed JSON is available.
+    property var priceOverrides: null
+
+    readonly property var deepseekPriceRows: (root.priceOverrides && root.priceOverrides.deepseek) ? root.priceOverrides.deepseek : [
         { header: false, cells: ["", "off-peak", "peak"] },
         { header: true, cells: ["V4.1 Flash"] },
         { header: false, cells: ["cache hit", "0.003", "0.006"] },
@@ -29,7 +41,7 @@ Singleton {
         { header: false, cells: ["cache miss", "0.660", "1.320"] },
         { header: false, cells: ["output", "1.980", "3.960"] },
     ]
-    readonly property var anthropicPriceRows: [
+    readonly property var anthropicPriceRows: (root.priceOverrides && root.priceOverrides.anthropic) ? root.priceOverrides.anthropic : [
         { header: false, cells: ["", "input", "output", "cache read"] },
         { header: false, cells: ["Opus 5", "5.00", "25.00", "0.50"] },
         { header: false, cells: ["Sonnet 5", "2.00", "10.00", "0.20"] },
@@ -159,15 +171,18 @@ Singleton {
         const now = new Date();
         const newDs = root.deepseekPeakAt(now);
         const newAn = root.anthropicPeakAt(now);
+        const prev = root.lastState;
 
-        if (root.started) {
-            if (newDs !== root.deepseekPeak) root.notifyDeepseek(newDs, now);
-            if (newAn !== root.anthropicPeak) root.notifyAnthropic(newAn, now);
+        if (root.stateLoaded && prev) {
+            if (newDs !== prev.deepseekPeak) root.notifyDeepseek(newDs, now);
+            if (newAn !== prev.anthropicPeak) root.notifyAnthropic(newAn, now);
         }
 
+        const changed = !prev || newDs !== prev.deepseekPeak || newAn !== prev.anthropicPeak;
         root.deepseekPeak = newDs;
         root.anthropicPeak = newAn;
-        root.started = true;
+        root.lastState = { deepseekPeak: newDs, anthropicPeak: newAn };
+        if (root.stateLoaded && changed) root.persist();
 
         const dsW1 = root.formatMinutes(root.utcHourToIstMinutes(1));
         const dsW1e = root.formatMinutes(root.utcHourToIstMinutes(4));
@@ -184,9 +199,12 @@ Singleton {
         root.scheduleNext();
     }
 
+    function persist() {
+        stateFileView.setText(JSON.stringify(root.lastState));
+    }
+
     function load() {
-        root.started = false;
-        root.update();
+        stateFileView.reload();
     }
 
     function notifyDeepseek(peak, now) {
@@ -218,5 +236,46 @@ Singleton {
         interval: 1000
         repeat: false
         onTriggered: root.update()
+    }
+
+    FileView {
+        id: stateFileView
+        path: Qt.resolvedUrl(root.statePath)
+        onLoaded: {
+            try {
+                root.lastState = JSON.parse(stateFileView.text());
+            } catch (e) {
+                root.lastState = null;
+            }
+            root.stateLoaded = true;
+            root.update();
+        }
+        onLoadFailed: (error) => {
+            root.lastState = null;
+            root.stateLoaded = true;
+            root.update();
+        }
+    }
+
+    FileView {
+        id: pricesFileView
+        path: Qt.resolvedUrl(root.pricesPath)
+        onLoaded: {
+            try {
+                root.priceOverrides = JSON.parse(pricesFileView.text());
+            } catch (e) {
+                root.priceOverrides = null;
+            }
+        }
+        onLoadFailed: (error) => {
+            root.priceOverrides = null;
+        }
+    }
+
+    Component.onCompleted: {
+        root.load();
+        // Refresh prices from the vendors' docs at most once a day (the script
+        // gates itself by the output file's age, so reloads don't re-fetch).
+        Quickshell.execDetached([Quickshell.shellPath("scripts/peak-hours/update-prices.py")]);
     }
 }

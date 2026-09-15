@@ -151,7 +151,7 @@ spacing: 0
         MouseArea {
             id: rightCenterGroup
             anchors.verticalCenter: parent.verticalCenter
-            implicitWidth: root.centerSideModuleWidth
+            implicitWidth: Math.max(root.centerSideModuleWidth, rightCenterGroupContent.implicitWidth)
             implicitHeight: rightCenterGroupContent.implicitHeight
 
             onPressed: {
@@ -168,47 +168,53 @@ spacing: 0
                     Layout.fillWidth: true
                 }
 
-                MouseArea {
-                    id: deepseekIconButton
+                Revealer {
+                    reveal: !PeakHours.deepseekPeak
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
                     Layout.leftMargin: 8
                     Layout.rightMargin: 6
-                    visible: !PeakHours.deepseekPeak
-                    hoverEnabled: true
 
-                    CustomIcon {
-                        anchors.fill: parent
-                        source: "deepseek-symbolic"
-                        colorize: true
-                        color: Appearance.colors.colOnLayer1
-                    }
+                    MouseArea {
+                        id: deepseekIconButton
+                        width: 16
+                        height: 16
+                        hoverEnabled: true
 
-                    AiPricingPopup {
-                        provider: "deepseek"
-                        hoverTarget: deepseekIconButton
+                        CustomIcon {
+                            anchors.fill: parent
+                            source: "deepseek-symbolic"
+                            colorize: true
+                            color: Appearance.colors.colOnLayer1
+                        }
+
+                        AiPricingPopup {
+                            provider: "deepseek"
+                            hoverTarget: deepseekIconButton
+                        }
                     }
                 }
 
-                MouseArea {
-                    id: anthropicIconButton
+                Revealer {
+                    reveal: !PeakHours.anthropicPeak
                     Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: 16
-                    Layout.preferredHeight: 16
                     Layout.leftMargin: 6
                     Layout.rightMargin: 8
-                    visible: !PeakHours.anthropicPeak
-                    hoverEnabled: true
 
-                    CustomIcon {
-                        anchors.fill: parent
-                        source: "anthropic-symbolic"
-                    }
+                    MouseArea {
+                        id: anthropicIconButton
+                        width: 16
+                        height: 16
+                        hoverEnabled: true
 
-                    AiPricingPopup {
-                        provider: "anthropic"
-                        hoverTarget: anthropicIconButton
+                        CustomIcon {
+                            anchors.fill: parent
+                            source: "anthropic-symbolic"
+                        }
+
+                        AiPricingPopup {
+                            provider: "anthropic"
+                            hoverTarget: anthropicIconButton
+                        }
                     }
                 }
 
